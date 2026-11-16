@@ -1,0 +1,43 @@
+name: case-study-tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Reproduce bugs, apply fixes, prove them
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: tasklane
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d tasklane"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install psql
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Run all three before/after checks
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/tasklane
+        run: bash tests/run.sh
+      - name: Upload EXPLAIN output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: explain-and-results
+          path: tests/output/

@@ -1,0 +1,11 @@
+{
+  "name": "nextjs-supabase-bugfix-case-study",
+  "private": true,
+  "type": "module",
+  "description": "Sample case study (fictional app): three Next.js + Supabase bugs reproduced, fixed and tested.",
+  "scripts": {
+    "test:session": "node --import ./tests/register.mjs tests/session.test.mjs",
+    "test": "bash tests/run.sh"
+  },
+  "engines": { "node": ">=22.18" }
+}

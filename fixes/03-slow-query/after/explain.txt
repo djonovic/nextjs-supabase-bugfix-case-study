@@ -1,0 +1,26 @@
+-- EXPLAIN (ANALYZE, BUFFERS, COSTS OFF) of fixes/03-slow-query/dashboard-query.sql
+-- run as Maya (role authenticated, RLS on, fixed policy), PostgreSQL 17.5, ~500k fictional rows
+-- AFTER: 0004_tasks_dashboard_index.sql applied
+
+Limit (actual time=0.045..0.088 rows=50 loops=1)
+  Buffers: shared hit=37 read=4
+  ->  Index Scan using tasks_open_by_assignee_idx on tasks (actual time=0.044..0.083 rows=50 loops=1)
+        Index Cond: ((workspace_id = '11111111-1111-4111-8111-111111111111'::uuid) AND (assignee_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1'::uuid))
+        Filter: (ANY (workspace_id = (hashed SubPlan 3).col1))
+        Buffers: shared hit=37 read=4
+        SubPlan 3
+          ->  Result (actual time=0.009..0.010 rows=1 loops=1)
+                One-Time Filter: ((InitPlan 2).col1 = (InitPlan 1).col1)
+                Buffers: shared hit=1
+                InitPlan 1
+                  ->  Result (actual time=0.001..0.001 rows=1 loops=1)
+                InitPlan 2
+                  ->  Result (actual time=0.003..0.003 rows=1 loops=1)
+                ->  Seq Scan on workspace_members wm (actual time=0.003..0.004 rows=1 loops=1)
+                      Filter: (user_id = (InitPlan 1).col1)
+                      Rows Removed by Filter: 1
+                      Buffers: shared hit=1
+Planning:
+  Buffers: shared hit=207 read=1
+Planning Time: 0.601 ms
+Execution Time: 0.143 ms

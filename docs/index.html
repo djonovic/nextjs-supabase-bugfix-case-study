@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Next.js + Supabase bug-fix case study (sample, fictional app) · Pasko Djonovic</title>
+<meta name="description" content="Sample case study on a fictional app: an auth/session bug, an RLS policy leaking other users' rows, and a slow query — reproduced, fixed and proven by tests in CI.">
+<meta property="og:title" content="Next.js + Supabase bug-fix case study (sample)">
+<meta property="og:description" content="Logged out after 1h → fixed. 500,002 leaked rows → 0. 59 ms Seq Scan → 0.14 ms Index Scan. Fictional app, real Postgres tests.">
+<meta property="og:image" content="cover-1280x769.png">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛠️</text></svg>">
+</head><body>
+<div class="banner">SAMPLE CASE STUDY — “Tasklane” is a fictional app made for this demo. All users, workspaces and data are made up. No client involved.</div>
+<div class="wrap">
+<header>
+  <div class="kick">Next.js + Supabase · bug-fix case study</div>
+  <h1>3 bugs fixed in a Next.js + Supabase app — each one reproduced, fixed and proven by a test</h1>
+  <p class="lead">Users logged out after an hour, an RLS policy that let anyone read every team's tasks, and a dashboard query scanning the whole table. Here is what was wrong, the exact change, and the before/after numbers.</p>
+  <div class="meta"><span>Next.js App Router</span><span>@supabase/ssr</span><span>PostgreSQL RLS</span><span>EXPLAIN ANALYZE</span>
+    <a href="https://github.com/djonovic/nextjs-supabase-bugfix-case-study/actions/workflows/ci.yml"><img alt="CI status" src="https://github.com/djonovic/nextjs-supabase-bugfix-case-study/actions/workflows/ci.yml/badge.svg" style="height:20px;vertical-align:middle"></a></div>
+  <div class="cards">
+    <a class="card" href="#fix-1"><span class="n">FIX 01 · AUTH / SESSION</span><h3>Users logged out ~1 h after login; forged cookie reached the dashboard</h3>
+      <div class="ba"><div class="b"><small>Before</small><strong>Logged out</strong></div><i>→</i><div class="a"><small>After</small><strong>Stays in</strong></div></div></a>
+    <a class="card" href="#fix-2"><span class="n">FIX 02 · RLS LEAK</span><h3>Any logged-in user could read other workspaces' tasks</h3>
+      <div class="ba"><div class="b"><small>Leaked rows</small><strong>500,002</strong></div><i>→</i><div class="a"><small>Leaked rows</small><strong>0</strong></div></div></a>
+    <a class="card" href="#fix-3"><span class="n">FIX 03 · SLOW QUERY</span><h3>“My open tasks” did a full table scan on every page load</h3>
+      <div class="ba"><div class="b"><small>Seq Scan</small><strong>59 ms</strong></div><i>→</i><div class="a"><small>Index Scan</small><strong>0.14 ms</strong></div></div></a>
+  </div>
+</header>
+
+<section class="fix" id="fix-1">
+  <div class="kick">Fix 01 · auth / session</div>
+  <h2>Logged out after an hour — refreshed cookies never reached the browser</h2>
+  <div class="grid">
+    <div class="blk"><h4>Symptom</h4><p>Users were signed out about an hour after logging in (the default access-token lifetime), often mid-task. Auth logs showed <code>Invalid Refresh Token: Already Used</code>.</p></div>
+    <div class="blk"><h4>Root cause</h4><ul><li><code>@supabase/ssr</code> refreshed the token and called <code>setAll()</code>, but the middleware wrote the new cookies to the <b>request</b> only and returned an older response.</li><li><code>getSession()</code> on the server trusts the cookie without verifying it, so a forged cookie passed the <code>/dashboard</code> gate.</li></ul></div>
+    <div><div class="code-h"><span class="tb">BEFORE · middleware.ts</span><a href="https://github.com/djonovic/nextjs-supabase-bugfix-case-study/blob/main/fixes/01-auth-session/before/middleware.ts">full file</a></div><pre>const response = NextResponse.next()
+const supabase = createServerClient(url, anonKey, {
+  cookies: {
+    getAll() { return request.cookies.getAll() },
+    setAll(cookiesToSet) {
+      <span class="bad">// refreshed tokens go to the request only</span>
+      cookiesToSet.forEach(({ name, value }) =&gt;
+        request.cookies.set(name, value))
+    },
+  },
+})
+<span class="bad">// decodes the cookie, does not verify it</span>
+const { data: { session } } = await <span class="bad">supabase.auth.getSession()</span>
+if (!session &amp;&amp; isDashboard) return redirectToLogin()
+<span class="bad">return response   // has no new cookies</span></pre></div>
+    <div><div class="code-h"><span class="ta">AFTER · middleware.ts</span><a href="https://github.com/djonovic/nextjs-supabase-bugfix-case-study/blob/main/fixes/01-auth-session/after/middleware.ts">full file</a></div><pre>let <span class="good">response = NextResponse.next({ request })</span>
+const supabase = createServerClient(url, anonKey, {
+  cookies: {
+    getAll() { return request.cookies.getAll() },
+    setAll(cookiesToSet) {
+      cookiesToSet.forEach(({ name, value }) =&gt;
+        request.cookies.set(name, value))
+      <span class="good">response = NextResponse.next({ request })</span>
+      cookiesToSet.forEach(({ name, value, options }) =&gt;
+        <span class="good">response.cookies.set(name, value, options))</span>
+    },
+  },
+})
+// verified with Supabase Auth
+const { data: { user } } = await <span class="good">supabase.auth.getUser()</span>
+if (!user &amp;&amp; isDashboard) return redirectToLogin()
+return response   // carries the refreshed cookies</pre></div>
+    <div class="blk span2"><h4>Proof — tests/session.test.mjs</h4>
+      <table><tr><th>Check</th><th>Before</th><th>After</th></tr>
+      <tr><td>Expired token → refreshed cookie on the response</td><td class="b">missing</td><td class="a">Set-Cookie: sb-auth-token</td></tr>
+      <tr><td>Forged cookie → /dashboard</td><td class="b">allowed</td><td class="a">redirect /login</td></tr></table>
+      <p class="note">Runs the real before/after <code>middleware.ts</code> under Node with a simulated Supabase client that mimics token refresh and server-side verification (not the real library). The dashboard page was switched from <code>getSession()</code> to <code>getUser()</code> as well.</p></div>
+  </div>
+</section>
+
+<section class="fix" id="fix-2">
+  <div class="kick">Fix 02 · row level security</div>
+  <h2>RLS was “enabled” — and still leaked every workspace's tasks</h2>
+  <div class="grid">
+    <div class="blk"><h4>Symptom</h4><p>Maya, a member of <i>Maple Studio</i> only, could load <i>Cedar Labs</i>' tasks, including “Confidential: pricing change for enterprise plan”. The dashboard showed RLS as enabled.</p></div>
+    <div class="blk"><h4>Root cause</h4><p>The policy's <code>EXISTS</code> only checks that the user belongs to <b>some</b> workspace. It is never tied to the row's <code>workspace_id</code>, so it is true for every logged-in user and every row.</p></div>
+    <div><div class="code-h"><span class="tb">BEFORE · policy</span><a href="https://github.com/djonovic/nextjs-supabase-bugfix-case-study/blob/main/fixes/02-rls-leak/before/policy.sql">file</a></div><pre>CREATE POLICY &quot;members can read tasks&quot; ON public.tasks
+  FOR SELECT TO authenticated
+  USING (
+    <span class="bad">EXISTS (</span>
+      SELECT 1 FROM public.workspace_members wm
+      WHERE wm.user_id = auth.uid()
+      <span class="bad">-- missing: AND wm.workspace_id = tasks.workspace_id</span>
+    )
+  );</pre></div>
+    <div><div class="code-h"><span class="ta">AFTER · policy + index</span><a href="https://github.com/djonovic/nextjs-supabase-bugfix-case-study/blob/main/fixes/02-rls-leak/after/policy.sql">file</a></div><pre>CREATE POLICY &quot;members can read tasks&quot; ON public.tasks
+  FOR SELECT TO authenticated
+  USING (
+    <span class="good">workspace_id IN (</span>
+      SELECT wm.workspace_id FROM public.workspace_members wm
+      WHERE wm.user_id = <span class="good">(SELECT auth.uid())</span>
+    )
+  );
+
+CREATE INDEX workspace_members_user_id_idx
+  ON public.workspace_members (user_id, workspace_id);</pre></div>
+    <div class="blk span2"><h4>Proof — real PostgreSQL RLS, queried as role <code>authenticated</code> with Maya's JWT sub</h4>
+      <table><tr><th>Maya's query</th><th>Before</th><th>After</th></tr>
+      <tr><td>Rows from her own workspace</td><td>302</td><td>302</td></tr>
+      <tr><td>Rows from other workspaces</td><td class="b">500,002</td><td class="a">0</td></tr></table></div>
+  </div>
+</section>
+
+<section class="fix" id="fix-3">
+  <div class="kick">Fix 03 · query performance</div>
+  <h2>“My open tasks” read 500k rows to show 50</h2>
+  <div class="grid">
+    <div class="blk"><h4>Symptom</h4><p>The dashboard list got slower as the table grew. The query: <code>.eq('workspace_id').eq('assignee_id').neq('status','done').order('created_at', desc).limit(50)</code>.</p></div>
+    <div class="blk"><h4>Fix</h4><pre style="white-space:pre-wrap">CREATE INDEX tasks_open_by_assignee_idx
+  ON public.tasks (workspace_id, assignee_id, created_at DESC)
+  WHERE status &lt;&gt; &#x27;done&#x27;;</pre><p class="note">Equality columns first, then the sort column, partial on open tasks, so Postgres walks the index in order and stops at 50 rows. Use <code>CREATE INDEX CONCURRENTLY</code> on a live database.</p></div>
+    <div><div class="code-h"><span class="tb">BEFORE · EXPLAIN (ANALYZE, BUFFERS) · trimmed</span><a href="https://github.com/djonovic/nextjs-supabase-bugfix-case-study/blob/main/fixes/03-slow-query/before/explain.txt">full plan</a></div><pre>Limit (actual time=59.164..59.173 rows=50 loops=1)
+  Buffers: shared hit=6243
+  -&gt;  Sort (actual time=59.162..59.167 rows=50 loops=1)
+        Sort Key: tasks.created_at DESC
+        <span class="bad">Sort Method: top-N heapsort  Memory: 31kB</span>
+        Buffers: shared hit=6243
+        -&gt;  <span class="bad">Seq Scan on tasks</span> (actual time=0.024..59.119 rows=138 loops=1)
+              Filter: (RLS policy) AND status &lt;&gt; 'done' AND workspace_id = … AND assignee_id = …
+              <span class="bad">Rows Removed by Filter: 500166</span>
+              Buffers: shared hit=6240
+Planning Time: 0.567 ms
+<span class="bad">Execution Time: 59.230 ms</span></pre></div>
+    <div><div class="code-h"><span class="ta">AFTER · EXPLAIN (ANALYZE, BUFFERS) · trimmed</span><a href="https://github.com/djonovic/nextjs-supabase-bugfix-case-study/blob/main/fixes/03-slow-query/after/explain.txt">full plan</a></div><pre>Limit (actual time=0.045..0.088 rows=50 loops=1)
+  Buffers: shared hit=37 read=4
+  -&gt;  <span class="good">Index Scan using tasks_open_by_assignee_idx on tasks</span> (actual time=0.044..0.083 rows=50 loops=1)
+        Index Cond: ((workspace_id = &#x27;11111111-1111-4111-8111-111111111111&#x27;::uuid) AND (assignee_id = &#x27;aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1&#x27;::uuid))
+        Filter: (RLS policy)
+        Buffers: shared hit=37 read=4
+Planning Time: 0.601 ms
+<span class="good">Execution Time: 0.143 ms</span></pre></div>
+    <div class="blk span2"><table><tr><th></th><th>Before</th><th>After</th></tr>
+      <tr><td>Plan</td><td class="b">Seq Scan + top-N sort</td><td class="a">Index Scan</td></tr>
+      <tr><td>Rows read and discarded</td><td class="b">500,166</td><td class="a">0</td></tr>
+      <tr><td>Buffers</td><td class="b">6,243</td><td class="a">41</td></tr>
+      <tr><td>Execution time</td><td class="b">59.2 ms</td><td class="a">0.14 ms</td></tr></table>
+      <p class="note">Measured as Maya with RLS on, PostgreSQL 17.5, ~500k fictional rows, on a dev machine. CI re-runs it on Postgres 16 and uploads the plans. Absolute times vary by machine; the plan change is the point.</p></div>
+  </div>
+</section>
+</div>
+<footer><div class="wrap row">
+  <span>Sample by <b style="color:#e5ecf6">Pasko Djonovic</b> — Next.js + Supabase developer (RLS, auth, performance) · <a href="https://www.upwork.com/freelancers/paskodjonovic">Upwork</a></span>
+  <span><a href="https://github.com/djonovic/nextjs-supabase-bugfix-case-study">Source &amp; tests on GitHub</a> · <a href="https://djonovic.github.io/supabase-security-audit-demo/">Supabase security audit sample</a></span>
+</div></footer>
+</body></html>

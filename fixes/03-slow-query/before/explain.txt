@@ -1,0 +1,30 @@
+-- EXPLAIN (ANALYZE, BUFFERS, COSTS OFF) of fixes/03-slow-query/dashboard-query.sql
+-- run as Maya (role authenticated, RLS on, fixed policy), PostgreSQL 17.5, ~500k fictional rows
+-- BEFORE: no index matching the query
+
+Limit (actual time=59.164..59.173 rows=50 loops=1)
+  Buffers: shared hit=6243
+  ->  Sort (actual time=59.162..59.167 rows=50 loops=1)
+        Sort Key: tasks.created_at DESC
+        Sort Method: top-N heapsort  Memory: 31kB
+        Buffers: shared hit=6243
+        ->  Seq Scan on tasks (actual time=0.024..59.119 rows=138 loops=1)
+              Filter: ((ANY (workspace_id = (hashed SubPlan 3).col1)) AND (status <> 'done'::text) AND (workspace_id = '11111111-1111-4111-8111-111111111111'::uuid) AND (assignee_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1'::uuid))
+              Rows Removed by Filter: 500166
+              Buffers: shared hit=6240
+              SubPlan 3
+                ->  Result (actual time=0.007..0.009 rows=1 loops=1)
+                      One-Time Filter: ((InitPlan 2).col1 = (InitPlan 1).col1)
+                      Buffers: shared hit=1
+                      InitPlan 1
+                        ->  Result (actual time=0.001..0.001 rows=1 loops=1)
+                      InitPlan 2
+                        ->  Result (actual time=0.003..0.003 rows=1 loops=1)
+                      ->  Seq Scan on workspace_members wm (actual time=0.002..0.002 rows=1 loops=1)
+                            Filter: (user_id = (InitPlan 1).col1)
+                            Rows Removed by Filter: 1
+                            Buffers: shared hit=1
+Planning:
+  Buffers: shared hit=206
+Planning Time: 0.567 ms
+Execution Time: 59.230 ms
