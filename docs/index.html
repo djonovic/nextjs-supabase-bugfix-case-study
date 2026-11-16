@@ -14,13 +14,14 @@
 <div class="banner">SAMPLE CASE STUDY — “Tasklane” is a fictional app made for this demo. All users, workspaces and data are made up. No client involved.</div>
 <div class="wrap">
 <header>
+  <div class="byline"><span><b>Pasko Djonovic</b> · I fix auth, RLS and slow queries in Next.js + Supabase apps</span><a class="hirebtn" href="https://www.upwork.com/freelancers/paskodjonovic" target="_blank" rel="noopener">Hire me on Upwork →</a></div>
   <div class="kick">Next.js + Supabase · bug-fix case study</div>
-  <h1>3 bugs fixed in a Next.js + Supabase app — each one reproduced, fixed and proven by a test</h1>
-  <p class="lead">Users logged out after an hour, an RLS policy that let anyone read every team's tasks, and a dashboard query scanning the whole table. Here is what was wrong, the exact change, and the before/after numbers.</p>
+  <h1>3 bugs fixed in a sample Next.js + Supabase app — each one reproduced, fixed and proven by a test</h1>
+  <p class="lead">In this sample app, users logged out after an hour, an RLS policy that let anyone read every team's tasks, and a dashboard query scanning the whole table. Here is what was wrong, the exact change, and the before/after numbers.</p>
   <div class="meta"><span>Next.js App Router</span><span>@supabase/ssr</span><span>PostgreSQL RLS</span><span>EXPLAIN ANALYZE</span>
     <a href="https://github.com/djonovic/nextjs-supabase-bugfix-case-study/actions/workflows/ci.yml" style="font:500 13px var(--mono);color:#6ee7b7;border:1px solid #05966999;background:#062a22;padding:5px 10px;border-radius:8px;text-decoration:none">● Tests run in GitHub Actions on every push →</a></div>
   <div class="cards">
-    <a class="card" href="#fix-1"><span class="n">FIX 01 · AUTH / SESSION</span><h3>Users logged out ~1 h after login; forged cookie reached the dashboard</h3>
+    <a class="card" href="#fix-1"><span class="n">FIX 01 · AUTH / SESSION</span><h3>Users logged out ~1 h after login; forged cookie reached the dashboard</h3><span class="sim">Tested with a simulated Supabase client</span>
       <div class="ba"><div class="b"><small>Before</small><strong>Logged out</strong></div><i>→</i><div class="a"><small>After</small><strong>Stays in</strong></div></div></a>
     <a class="card" href="#fix-2"><span class="n">FIX 02 · RLS LEAK</span><h3>Any logged-in user could read other workspaces' tasks</h3>
       <div class="ba"><div class="b"><small>Leaked rows</small><strong>500,002</strong></div><i>→</i><div class="a"><small>Leaked rows</small><strong>0</strong></div></div></a>

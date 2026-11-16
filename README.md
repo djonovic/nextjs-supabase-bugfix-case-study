@@ -1,14 +1,14 @@
 # Next.js + Supabase bug-fix case study (sample, fictional app)
 
 [![case-study-tests](https://github.com/djonovic/nextjs-supabase-bugfix-case-study/actions/workflows/ci.yml/badge.svg)](https://github.com/djonovic/nextjs-supabase-bugfix-case-study/actions/workflows/ci.yml)
-**Live write-up:** https://djonovic.github.io/nextjs-supabase-bugfix-case-study/
+**Live write-up:** https://djonovic.github.io/nextjs-supabase-bugfix-case-study/ · **Pasko Djonovic** — I fix auth, RLS and slow queries in Next.js + Supabase apps · [Hire me on Upwork](https://www.upwork.com/freelancers/paskodjonovic)
 
 ![Case study overview: 3 bugs, before and after](screenshots/cover-1600x1200.png)
 
-> **In 10 seconds:** three bugs that show up in real Next.js + Supabase apps:
-> users logged out after an hour, an RLS policy that leaks every team's rows,
-> and a dashboard query doing a full table scan. Each one is reproduced,
-> fixed, and proven by a test that runs on every push.
+> **In 10 seconds:** three bugs that show up in real Next.js + Supabase apps,
+> reproduced in a sample app: users logged out after an hour, an RLS policy that leaks every team's rows,
+> and a dashboard query doing a full table scan. Each one is fixed and
+> proven by a test that runs on every push (fix 01 uses a simulated Supabase client).
 
 **This is a sample.** "Tasklane" is a fictional team-tasks app made for this
 case study, and all data (Maya, Leo, Maple Studio, Cedar Labs) is made up.
